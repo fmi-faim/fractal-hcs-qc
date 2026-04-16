@@ -1,0 +1,19 @@
+# Do not edit - changes here will be overwritten by Copier
+_commit: v0.6.6
+_src_path: gh:fractal-analytics-platform/fractal-tasks-template
+author_email: jan.eglinger@fmi.ch
+author_name: Jan Eglinger
+image_processing_task: Gaussian Blur
+include_feature_task: false
+include_image_processing_task: true
+include_segmentation_task: false
+mode: customize
+package_name: fractal_hcs_qc
+project_license: BSD-3-Clause
+project_name: fractal-hcs-qc
+project_short_description: Fractal task to consolidate measurement tables in HCS plate
+    zarrs
+project_url: ''
+run_git_init: true
+run_pixi_init_task: true
+
