@@ -1,5 +1,7 @@
 """Common utils for manipulating Polars dataframes."""
 
+import re
+
 import polars as pl
 import polars.selectors as cs
 
@@ -82,3 +84,52 @@ def remove_prefix_from_columns(
     return df.rename(
         {col: col.removeprefix(prefix) for col in df.collect_schema().names()}
     )
+
+
+def split_feature_names(
+    df: pl.DataFrame | pl.LazyFrame,
+    feature_name_column: str,
+    channel_names: list[str],
+) -> pl.DataFrame | pl.LazyFrame:
+    """Split feature names in the specified column into separate components."""
+    channel_pattern = "|".join(re.escape(name) for name in channel_names)
+    return df.with_columns(
+        pl.col(feature_name_column)
+        .str.extract_groups(rf"(.+?)(?:_({channel_pattern}))?(?:_(mean|std|sum))?$")
+        .struct.rename_fields(["feature", "channel", "stat"])
+        .struct.unnest()
+    )
+
+
+def merge_feature_columns(
+    df: pl.DataFrame | pl.LazyFrame,
+    *,
+    compartment_column_name: str = "compartment",
+    feature_column_name: str = "feature",
+    statistic_column_name: str = "statistic",
+) -> pl.DataFrame | pl.LazyFrame:
+    """Merge separate feature components into a single feature name column.
+
+    The merged feature name will be in the format:
+        {compartment}_{feature}_{statistic} if statistic is not null
+        {compartment}_{feature} if statistic is null and compartment is not null
+        {feature}_{statistic} if compartment is null and statistic is not null
+        {feature} if both compartment and statistic are null
+    """
+    return df.with_columns(
+        pl.concat_str(
+            [
+                pl.when(pl.col(compartment_column_name).is_not_null())
+                .then(pl.col(compartment_column_name))
+                .otherwise(pl.lit("")),
+                pl.col(feature_column_name),
+                pl.when(pl.col(statistic_column_name).is_not_null())
+                .then(pl.col(statistic_column_name))
+                .otherwise(pl.lit("")),
+            ],
+            separator="_",
+        )
+        .str.strip_prefix("_")
+        .str.strip_suffix("_")
+        .alias(feature_column_name)
+    ).drop([compartment_column_name, statistic_column_name])

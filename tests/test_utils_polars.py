@@ -5,7 +5,9 @@ from polars.testing import assert_frame_equal
 from fractal_hcs_qc.utils_polars import (
     aggregate_mean_std_sum_first,
     aggregate_mean_sum_first,
+    merge_feature_columns,
     remove_prefix_from_columns,
+    split_feature_names,
 )
 
 
@@ -132,3 +134,102 @@ def test_remove_prefix_from_columns_empty_dataframe():
     ]
 
     assert result.columns == expected_columns
+
+
+def test_split_feature_names():
+    df = pl.DataFrame(
+        data={
+            "feature_name": [
+                "mean_intensity_GFP",
+                "mean_intensity_DAPI",
+                "area",
+                "mean_intensity_GFP_mean",
+                "mean_intensity_DAPI_mean",
+                "mean_intensity_GFP_std",
+                "mean_intensity_DAPI_std",
+            ]
+        }
+    )
+
+    channel_names = ["GFP", "DAPI"]
+    result = split_feature_names(df, "feature_name", channel_names)
+
+    expected = pl.DataFrame(
+        data={
+            "feature_name": [
+                "mean_intensity_GFP",
+                "mean_intensity_DAPI",
+                "area",
+                "mean_intensity_GFP_mean",
+                "mean_intensity_DAPI_mean",
+                "mean_intensity_GFP_std",
+                "mean_intensity_DAPI_std",
+            ],
+            "feature": [
+                "mean_intensity",
+                "mean_intensity",
+                "area",
+                "mean_intensity",
+                "mean_intensity",
+                "mean_intensity",
+                "mean_intensity",
+            ],
+            "channel": [
+                "GFP",
+                "DAPI",
+                None,
+                "GFP",
+                "DAPI",
+                "GFP",
+                "DAPI",
+            ],
+            "stat": [
+                None,
+                None,
+                None,
+                "mean",
+                "mean",
+                "std",
+                "std",
+            ],
+        }
+    )
+
+    assert_frame_equal(result, expected)
+
+
+def test_merge_feature_columns():
+    df = pl.DataFrame(
+        data={
+            "compartment": ["nucleus", "cytoplasm", None, "nucleus", "cytoplasm"],
+            "feature": [
+                "mean_intensity",
+                "mean_intensity",
+                "area",
+                "spots_mean_intensity",
+                "spots_mean_intensity",
+            ],
+            "statistic": [None, None, None, "mean", "std"],
+        }
+    )
+
+    result = merge_feature_columns(
+        df,
+        compartment_column_name="compartment",
+        feature_column_name="feature",
+        statistic_column_name="statistic",
+    )
+
+    expected = pl.DataFrame(
+        data={
+            "feature": [
+                "nucleus_mean_intensity",
+                "cytoplasm_mean_intensity",
+                "area",
+                "nucleus_spots_mean_intensity_mean",
+                "cytoplasm_spots_mean_intensity_std",
+            ]
+        }
+    )
+
+    assert_frame_equal(result, expected)

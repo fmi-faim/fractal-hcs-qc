@@ -1,6 +1,5 @@
 """This is the Python module for consolidate_tables_task."""
 
-import re
 from functools import reduce
 
 import polars as pl
@@ -13,7 +12,9 @@ from pydantic import validate_call
 from fractal_hcs_qc.utils_polars import (
     aggregate_mean_std_sum_first,
     aggregate_mean_sum_first,
+    merge_feature_columns,
     remove_prefix_from_columns,
+    split_feature_names,
 )
 
 CHILD_OBJECT_INCLUDE_FEATURES = [
@@ -67,7 +68,7 @@ def consolidate_tables_task(
             Defaults to "Nucleus_features_apx".
         cytoplasm_table_name (str): Name of the cytoplasm table (parent).
             Defaults to "Cytoplasm_features_apx".
-        child_object_table_names (list[str | None]): Names of the child object tables.
+        child_object_table_names (list[str] | None): Names of the child object tables.
             Defaults to None.
 
     """
@@ -134,7 +135,7 @@ def consolidate_tables_task(
             index=["label", "well_name", "compartment"],
         )
 
-        if nucleus_table_df.lazy().limit(1).collect().is_empty():
+        if nucleus_table_df.limit(1).collect().is_empty():
             consolidated_df = cytoplasm_table_df
         else:
             consolidated_df = pl.concat(
@@ -224,12 +225,10 @@ def consolidate_tables_task(
                     consolidated_df = pl.concat([consolidated_df, object_table_df])
 
         # split feature_name into feature and channel
-        channel_pattern = "|".join(re.escape(ch) for ch in channel_labels)
-        consolidated_df = consolidated_df.with_columns(
-            pl.col("variable")
-            .str.extract_groups(rf"(.+?)(?:_({channel_pattern}))?(?:_(mean|std|sum))?$")
-            .struct.rename_fields(["feature", "channel", "stat"])
-            .struct.unnest()
+        consolidated_df = split_feature_names(
+            consolidated_df,
+            feature_name_column="variable",
+            channel_names=channel_labels,
         )
 
         # # write consolidated table back to OME-Zarr container
@@ -246,22 +245,16 @@ def consolidate_tables_task(
             ).drop("channel")
 
             # suffix 'stat' onto  'feature' if stat is not null
-            channel_df = channel_df.with_columns(
-                pl.when(pl.col("stat").is_not_null())
-                .then(
-                    pl.col("compartment")
-                    + "_"
-                    + pl.col("feature")
-                    + "_"
-                    + pl.col("stat")
-                )
-                .otherwise(pl.col("compartment") + "_" + pl.col("feature"))
-                .alias("compartment_feature")
+            channel_df = merge_feature_columns(
+                channel_df,
+                compartment_column_name="compartment",
+                feature_column_name="feature",
+                statistic_column_name="stat",
             )
 
             # pivot by compartment, feature, stat (and keep label, well_name)
             channel_df = channel_df.collect().pivot(
-                "compartment_feature",
+                "feature",
                 values="value",
                 index=["label", "well_name"],
             )
