@@ -26,6 +26,7 @@ dev = [
   "devtools",
   "hatch",
   "pytest",
+  "pytest-cov",
   "requests",
   "jsonschema",
   "ruff",
@@ -89,7 +90,7 @@ create-manifest = { cmd = [
   "fractal-hcs-qc",
 ] }
 
-test = "pytest"
+test = "pytest --cov=src --cov-report term-missing"
 
 init-tasks = [
   { task = "install-pre-commit", environment = "dev" },
