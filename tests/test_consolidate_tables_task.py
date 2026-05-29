@@ -8,6 +8,7 @@ from ngio import (
     OmeZarrPlate,
     create_empty_plate,
     create_ome_zarr_from_array,
+    open_ome_zarr_container,
     open_ome_zarr_plate,
 )
 from ngio.tables import FeatureTable
@@ -268,7 +269,6 @@ def test_consolidate_tables_task(
         for well_path in plate_dataset.images_paths()
     ]
 
-    print("well_path_list:", list(well_path_list))
     consolidate_tables_task(
         zarr_urls=well_path_list,
         zarr_dir="",
@@ -277,3 +277,26 @@ def test_consolidate_tables_task(
         cytoplasm_table_name="Cytoplasm_features_apx",
         child_object_table_names=["Speckle_features_apx"],
     )
+
+    # C/03/fov0: non-empty well — assert tables were written with content
+    c03 = open_ome_zarr_container(well_path_list[0])
+    assert c03.get_table("consolidated_table") is not None
+
+    rna_df = (
+        c03.get_feature_table("RNA_features_consolidated").load_as_polars_lf().collect()
+    )
+    assert len(rna_df) > 0
+    assert "label" in rna_df.columns
+    assert "well_name" in rna_df.columns
+
+    dna_df = (
+        c03.get_feature_table("DNA_features_consolidated").load_as_polars_lf().collect()
+    )
+    assert len(dna_df) > 0
+
+    # C/04/fov0: empty well — task must not crash, output tables must be empty
+    c04 = open_ome_zarr_container(well_path_list[1])
+    c04_rna_df = (
+        c04.get_feature_table("RNA_features_consolidated").load_as_polars_lf().collect()
+    )
+    assert len(c04_rna_df) == 0

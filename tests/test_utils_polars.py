@@ -209,7 +209,7 @@ def test_merge_feature_columns():
                 "spots_mean_intensity",
                 "spots_mean_intensity",
             ],
-            "statistic": [None, None, None, "mean", "std"],
+            "stat": [None, None, None, "mean", "std"],
         }
     )
 
@@ -217,7 +217,7 @@ def test_merge_feature_columns():
         df,
         compartment_column_name="compartment",
         feature_column_name="feature",
-        statistic_column_name="statistic",
+        stat_column_name="stat",
     )
 
     expected = pl.DataFrame(

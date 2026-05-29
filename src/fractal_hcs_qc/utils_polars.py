@@ -4,6 +4,7 @@ import re
 
 import polars as pl
 import polars.selectors as cs
+from loguru import logger
 
 
 def aggregate_mean_sum_first(
@@ -19,8 +20,8 @@ def aggregate_mean_sum_first(
     If df has null dtype columns, the (likely empty) input dataframe is returned.
     """
     if any(dtype == pl.Null for dtype in df.lazy().collect_schema().dtypes()):
-        print(
-            """Warning: DataFrame contains null dtype columns.
+        logger.warning(
+            """DataFrame contains null dtype columns.
             Returning input DataFrame without aggregation."""
         )
         return df.with_columns(
@@ -106,15 +107,15 @@ def merge_feature_columns(
     *,
     compartment_column_name: str = "compartment",
     feature_column_name: str = "feature",
-    statistic_column_name: str = "statistic",
+    stat_column_name: str = "stat",
 ) -> pl.DataFrame | pl.LazyFrame:
     """Merge separate feature components into a single feature name column.
 
     The merged feature name will be in the format:
-        {compartment}_{feature}_{statistic} if statistic is not null
-        {compartment}_{feature} if statistic is null and compartment is not null
-        {feature}_{statistic} if compartment is null and statistic is not null
-        {feature} if both compartment and statistic are null
+        {compartment}_{feature}_{stat} if stat is not null
+        {compartment}_{feature} if stat is null and compartment is not null
+        {feature}_{stat} if compartment is null and stat is not null
+        {feature} if both compartment and stat are null
     """
     return df.with_columns(
         pl.concat_str(
@@ -123,8 +124,8 @@ def merge_feature_columns(
                 .then(pl.col(compartment_column_name))
                 .otherwise(pl.lit("")),
                 pl.col(feature_column_name),
-                pl.when(pl.col(statistic_column_name).is_not_null())
-                .then(pl.col(statistic_column_name))
+                pl.when(pl.col(stat_column_name).is_not_null())
+                .then(pl.col(stat_column_name))
                 .otherwise(pl.lit("")),
             ],
             separator="_",
@@ -132,4 +133,4 @@ def merge_feature_columns(
         .str.strip_prefix("_")
         .str.strip_suffix("_")
         .alias(feature_column_name)
-    ).drop([compartment_column_name, statistic_column_name])
+    ).drop([compartment_column_name, stat_column_name])
