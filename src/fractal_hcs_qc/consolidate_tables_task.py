@@ -245,6 +245,7 @@ def consolidate_tables_task(
             name="consolidated_table",
             table=GenericTable(consolidated_df),
             backend="csv",
+            overwrite=True,
         )
 
         for channel in channel_labels:
@@ -275,6 +276,7 @@ def consolidate_tables_task(
                     channel_df, reference_label=cytoplasm_table.reference_label
                 ),
                 backend="csv",
+                overwrite=True,
             )
 
     logger.info("Table consolidation complete.")

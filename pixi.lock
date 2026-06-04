@@ -2713,7 +2713,7 @@ packages:
   timestamp: 1733327494780
 - pypi: ./
   name: fractal-hcs-qc
-  version: 0.1.1.dev9+gda498cd05.d20260604
+  version: 0.1.1.dev11+gc8c6e0268.d20260604
   sha256: 626190e845d580d7c0a4afebf90406756aa7905f956cbdaf182a796a91b01424
   requires_dist:
   - fractal-task-tools>=0.4.0,<0.5.0
