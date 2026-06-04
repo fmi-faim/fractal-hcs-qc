@@ -122,3 +122,7 @@ ENV/
 
 # Folders
 data/
+tmp/
+
+# Claude Code
+.claude/

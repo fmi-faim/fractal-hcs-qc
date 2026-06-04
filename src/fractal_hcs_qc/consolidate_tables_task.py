@@ -118,30 +118,41 @@ def consolidate_tables_task(
             }
         )
 
+        nucleus_empty = nucleus_table_df.lazy().limit(1).collect().is_empty()
+        cytoplasm_empty = cytoplasm_table_df.lazy().limit(1).collect().is_empty()
+
+        if nucleus_empty and cytoplasm_empty:
+            logger.warning(
+                f"Both nucleus and cytoplasm tables are empty for {zarr_url}. Skipping."
+            )
+            continue
+
         # completely unpivot both tables
         # id columns: label, well_name, ROI
         # all numeric features: feature_name, value
-        nucleus_table_df = nucleus_table_df.with_columns(
-            pl.lit("nucleus").alias("compartment")
-        ).unpivot(
-            on=cs.numeric() - cs.by_name("label"),  # exclude "label"
-            index=["label", "well_name", "compartment"],
-        )
-
-        cytoplasm_table_df = cytoplasm_table_df.with_columns(
-            pl.lit("cytoplasm").alias("compartment")
-        ).unpivot(
-            on=cs.numeric() - cs.by_name("label"),  # exclude "label"
-            index=["label", "well_name", "compartment"],
-        )
-
-        if nucleus_table_df.limit(1).collect().is_empty():
-            consolidated_df = cytoplasm_table_df
-        else:
-            consolidated_df = pl.concat(
-                [nucleus_table_df, cytoplasm_table_df],
-                how="vertical_relaxed",
+        parts = []
+        if not nucleus_empty:
+            parts.append(
+                nucleus_table_df.with_columns(
+                    pl.lit("nucleus").alias("compartment")
+                ).unpivot(
+                    on=cs.numeric() - cs.by_name("label"),
+                    index=["label", "well_name", "compartment"],
+                )
             )
+        if not cytoplasm_empty:
+            parts.append(
+                cytoplasm_table_df.with_columns(
+                    pl.lit("cytoplasm").alias("compartment")
+                ).unpivot(
+                    on=cs.numeric() - cs.by_name("label"),
+                    index=["label", "well_name", "compartment"],
+                )
+            )
+
+        consolidated_df = (
+            parts[0] if len(parts) == 1 else pl.concat(parts, how="vertical_relaxed")
+        )
 
         consolidated_df = remove_common_prefixes(
             consolidated_df,
