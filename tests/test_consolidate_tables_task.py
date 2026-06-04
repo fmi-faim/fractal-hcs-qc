@@ -214,6 +214,86 @@ def plate_dataset(tmp_plate_zarr_path: Path) -> OmeZarrPlate:
     return plate
 
 
+@pytest.fixture
+def empty_well_plate(tmp_path: Path) -> tuple[OmeZarrPlate, Path]:
+    """Plate with one empty well (no objects) and one normal well."""
+    store = tmp_path / "empty_well_plate.zarr"
+    plate = create_empty_plate(
+        store=store,
+        name="Empty Well Test Plate",
+        ngff_version=NGFF_VERSION,
+        overwrite=True,
+    )
+    common_shape = (2, 64, 64)
+    np.random.seed(0)
+
+    for row, col in [("A", "1"), ("A", "2")]:
+        well_path = plate.add_image(row=row, column=col, image_path="fov0")
+        container = create_ome_zarr_from_array(
+            store=store / well_path,
+            array=np.random.randint(0, 256, size=common_shape, dtype=np.uint8),
+            axes_names="cyx",
+            channels_meta=["RNA", "DNA"],
+            levels=["s0"],
+            pixelsize=0.5,
+            ngff_version=NGFF_VERSION,
+            overwrite=True,
+        )
+        is_empty = col == "1"
+        n = 0 if is_empty else 2
+        well_name = f"{row}{col}"
+        nucleus_data = pd.DataFrame({
+            "label": np.arange(1, n + 1),
+            "well_name": [well_name] * n,
+            "Nucleus_cellpose_Intensity_mean_intensity_RNA_mean": np.random.rand(n),
+            "Cells_RNA_label": np.arange(101, n + 101),
+        })
+        cytoplasm_data = pd.DataFrame({
+            "label": np.arange(1, n + 1),
+            "well_name": [well_name] * n,
+            "Cytoplasm_Intensity_mean_intensity_RNA_mean": np.random.rand(n),
+            "Cells_RNA_label": np.arange(101, n + 101),
+        })
+        container.add_table(
+            name="Nucleus_features_apx",
+            table=FeatureTable(nucleus_data, reference_label="Nucleus_cellpose"),
+            backend="csv",
+        )
+        container.add_table(
+            name="Cytoplasm_features_apx",
+            table=FeatureTable(cytoplasm_data, reference_label="Cytoplasm"),
+            backend="csv",
+        )
+
+    return plate, store
+
+
+def test_empty_well_is_skipped(empty_well_plate: tuple[OmeZarrPlate, Path]):
+    """Empty wells (no objects) must be skipped without error; normal wells must succeed."""
+    plate, store = empty_well_plate
+    well_paths = [
+        (store / p).as_posix() for p in plate.images_paths()
+    ]
+
+    consolidate_tables_task(
+        zarr_urls=well_paths,
+        zarr_dir="",
+        overlap_label_prefix="Cells_RNA",
+        nucleus_table_name="Nucleus_features_apx",
+        cytoplasm_table_name="Cytoplasm_features_apx",
+    )
+
+    empty_well = open_ome_zarr_container(well_paths[0])
+    assert "consolidated_table" not in empty_well.tables_container.list(), (
+        "Empty well should have no output tables written"
+    )
+
+    normal_well = open_ome_zarr_container(well_paths[1])
+    assert "consolidated_table" in normal_well.tables_container.list(), (
+        "Normal well should have consolidated_table written"
+    )
+
+
 def test_ngio_open_plate_dataset_fixture(
     plate_dataset: OmeZarrPlate, tmp_plate_zarr_path: Path
 ):
@@ -294,9 +374,7 @@ def test_consolidate_tables_task(
     )
     assert len(dna_df) > 0
 
-    # C/04/fov0: empty well — task must not crash, output tables must be empty
+    # C/04/fov0: empty well — task must not crash, no output tables written
     c04 = open_ome_zarr_container(well_path_list[1])
-    c04_rna_df = (
-        c04.get_feature_table("RNA_features_consolidated").load_as_polars_lf().collect()
-    )
-    assert len(c04_rna_df) == 0
+    assert "consolidated_table" not in c04.tables_container.list()
+    assert "RNA_features_consolidated" not in c04.tables_container.list()
