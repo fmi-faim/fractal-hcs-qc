@@ -233,3 +233,40 @@ def test_merge_feature_columns():
     )
 
     assert_frame_equal(result, expected)
+
+
+def test_merge_feature_columns_with_channel_suffix():
+    df = pl.DataFrame(
+        data={
+            "compartment": ["nucleus", "cytoplasm", None, "nucleus"],
+            "feature": [
+                "mean_intensity",
+                "spots_mean_intensity",
+                "area",
+                "spots_mean_intensity",
+            ],
+            "stat": ["mean", "std", None, None],
+            "channel": ["RNA", "DNA", "RNA", None],
+        }
+    )
+
+    result = merge_feature_columns(
+        df,
+        compartment_column_name="compartment",
+        feature_column_name="feature",
+        stat_column_name="stat",
+        channel_column_name="channel",
+    )
+
+    expected = pl.DataFrame(
+        data={
+            "feature": [
+                "nucleus_mean_intensity_mean_RNA",
+                "cytoplasm_spots_mean_intensity_std_DNA",
+                "area_RNA",
+                "nucleus_spots_mean_intensity",
+            ]
+        }
+    )
+
+    assert_frame_equal(result, expected)

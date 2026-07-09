@@ -242,18 +242,22 @@ def empty_well_plate(tmp_path: Path) -> tuple[OmeZarrPlate, Path]:
         is_empty = col == "1"
         n = 0 if is_empty else 2
         well_name = f"{row}{col}"
-        nucleus_data = pd.DataFrame({
-            "label": np.arange(1, n + 1),
-            "well_name": [well_name] * n,
-            "Nucleus_cellpose_Intensity_mean_intensity_RNA_mean": np.random.rand(n),
-            "Cells_RNA_label": np.arange(101, n + 101),
-        })
-        cytoplasm_data = pd.DataFrame({
-            "label": np.arange(1, n + 1),
-            "well_name": [well_name] * n,
-            "Cytoplasm_Intensity_mean_intensity_RNA_mean": np.random.rand(n),
-            "Cells_RNA_label": np.arange(101, n + 101),
-        })
+        nucleus_data = pd.DataFrame(
+            {
+                "label": np.arange(1, n + 1),
+                "well_name": [well_name] * n,
+                "Nucleus_cellpose_Intensity_mean_intensity_RNA_mean": np.random.rand(n),
+                "Cells_RNA_label": np.arange(101, n + 101),
+            }
+        )
+        cytoplasm_data = pd.DataFrame(
+            {
+                "label": np.arange(1, n + 1),
+                "well_name": [well_name] * n,
+                "Cytoplasm_Intensity_mean_intensity_RNA_mean": np.random.rand(n),
+                "Cells_RNA_label": np.arange(101, n + 101),
+            }
+        )
         container.add_table(
             name="Nucleus_features_apx",
             table=FeatureTable(nucleus_data, reference_label="Nucleus_cellpose"),
@@ -269,11 +273,9 @@ def empty_well_plate(tmp_path: Path) -> tuple[OmeZarrPlate, Path]:
 
 
 def test_empty_well_is_skipped(empty_well_plate: tuple[OmeZarrPlate, Path]):
-    """Empty wells (no objects) must be skipped without error; normal wells must succeed."""
+    """Empty wells (no objects) must be skipped; normal wells must succeed."""
     plate, store = empty_well_plate
-    well_paths = [
-        (store / p).as_posix() for p in plate.images_paths()
-    ]
+    well_paths = [(store / p).as_posix() for p in plate.images_paths()]
 
     consolidate_tables_task(
         zarr_urls=well_paths,
@@ -374,7 +376,26 @@ def test_consolidate_tables_task(
     )
     assert len(dna_df) > 0
 
+    all_channels_df = (
+        c03.get_feature_table("consolidated_features_all_channels")
+        .load_as_polars_lf()
+        .collect()
+    )
+    assert len(all_channels_df) > 0
+    assert "label" in all_channels_df.columns
+    assert all_channels_df["label"].null_count() == 0
+    assert all_channels_df["label"].n_unique() == len(all_channels_df)
+    feature_columns = {
+        column
+        for column in all_channels_df.columns
+        if column not in ["label", "well_name"]
+    }
+    assert any(
+        column.endswith("_RNA") or column.endswith("_DNA") for column in feature_columns
+    )
+
     # C/04/fov0: empty well — task must not crash, no output tables written
     c04 = open_ome_zarr_container(well_path_list[1])
     assert "consolidated_table" not in c04.tables_container.list()
     assert "RNA_features_consolidated" not in c04.tables_container.list()
+    assert "consolidated_features_all_channels" not in c04.tables_container.list()
