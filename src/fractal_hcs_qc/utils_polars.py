@@ -108,6 +108,7 @@ def merge_feature_columns(
     compartment_column_name: str = "compartment",
     feature_column_name: str = "feature",
     stat_column_name: str = "stat",
+    channel_column_name: str | None = None,
 ) -> pl.DataFrame | pl.LazyFrame:
     """Merge separate feature components into a single feature name column.
 
@@ -116,21 +117,31 @@ def merge_feature_columns(
         {compartment}_{feature} if stat is null and compartment is not null
         {feature}_{stat} if compartment is null and stat is not null
         {feature} if both compartment and stat are null
+
+    If ``channel_column_name`` is provided, channel is appended as the last suffix
+    when non-null.
     """
-    return df.with_columns(
-        pl.concat_str(
-            [
-                pl.when(pl.col(compartment_column_name).is_not_null())
-                .then(pl.col(compartment_column_name))
-                .otherwise(pl.lit("")),
-                pl.col(feature_column_name),
-                pl.when(pl.col(stat_column_name).is_not_null())
-                .then(pl.col(stat_column_name))
-                .otherwise(pl.lit("")),
-            ],
-            separator="_",
+    merge_parts = [
+        pl.when(pl.col(compartment_column_name).is_not_null())
+        .then(pl.col(compartment_column_name))
+        .otherwise(pl.lit(None)),
+        pl.col(feature_column_name),
+        pl.when(pl.col(stat_column_name).is_not_null())
+        .then(pl.col(stat_column_name))
+        .otherwise(pl.lit(None)),
+    ]
+
+    drop_columns = [compartment_column_name, stat_column_name]
+    if channel_column_name is not None:
+        merge_parts.append(
+            pl.when(pl.col(channel_column_name).is_not_null())
+            .then(pl.col(channel_column_name))
+            .otherwise(pl.lit(None))
         )
-        .str.strip_prefix("_")
-        .str.strip_suffix("_")
-        .alias(feature_column_name)
-    ).drop([compartment_column_name, stat_column_name])
+        drop_columns.append(channel_column_name)
+
+    return df.with_columns(
+        pl.concat_str(merge_parts, separator="_", ignore_nulls=True).alias(
+            feature_column_name
+        )
+    ).drop(drop_columns)

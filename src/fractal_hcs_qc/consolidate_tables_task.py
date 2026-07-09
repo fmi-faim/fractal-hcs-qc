@@ -52,9 +52,9 @@ def consolidate_tables_task(
     zarr_urls: list[str],
     zarr_dir: str,
     # Input parameters
-    overlap_label_prefix: str = "Cells_RNA",
-    nucleus_table_name: str = "Nucleus_features_apx",
-    cytoplasm_table_name: str = "Cytoplasm_features_apx",
+    overlap_label_prefix: str = "Cells",
+    nucleus_table_name: str = "Nucleus_features",
+    cytoplasm_table_name: str = "Cytoplasm_features",
     child_object_table_names: list[str] | None = None,
 ) -> None:
     """Consolidate tables within OME-Zarr containers (of an HCS plate).
@@ -63,11 +63,11 @@ def consolidate_tables_task(
         zarr_urls (list[str]): URLs to the OME-Zarr containers.
         zarr_dir (str): Directory to store the OME-Zarr containers.
         overlap_label_prefix (str): Prefix for the overlap labels.
-            Defaults to "Cells_RNA".
+            Defaults to "Cells".
         nucleus_table_name (str): Name of the nucleus table (parent).
-            Defaults to "Nucleus_features_apx".
+            Defaults to "Nucleus_features".
         cytoplasm_table_name (str): Name of the cytoplasm table (parent).
-            Defaults to "Cytoplasm_features_apx".
+            Defaults to "Cytoplasm_features".
         child_object_table_names (list[str] | None): Names of the child object tables.
             Defaults to None.
 
@@ -250,9 +250,14 @@ def consolidate_tables_task(
 
         for channel in channel_labels:
             # keep non-channel-specific features, and features for current channel
-            channel_df = consolidated_df.filter(
-                (pl.col("channel").is_null()) | (pl.col("channel") == channel)
-            ).drop("channel")
+            # also drop rows with null label
+            channel_df = (
+                consolidated_df.filter(
+                    (pl.col("channel").is_null()) | (pl.col("channel") == channel)
+                )
+                .drop("channel")
+                .filter(pl.col("label").is_not_null())
+            )
 
             # suffix 'stat' onto  'feature' if stat is not null
             channel_df = merge_feature_columns(
@@ -278,6 +283,33 @@ def consolidate_tables_task(
                 backend="csv",
                 overwrite=True,
             )
+
+        # create pivoted all-channel consolidated table
+        # merge columns: compartment, feature, stat, channel into feature
+        all_channels_df = consolidated_df.filter(pl.col("label").is_not_null())
+
+        all_channels_df = merge_feature_columns(
+            all_channels_df,
+            compartment_column_name="compartment",
+            feature_column_name="feature",
+            stat_column_name="stat",
+            channel_column_name="channel",
+        )
+
+        all_channels_df = all_channels_df.collect().pivot(
+            "feature",
+            values="value",
+            index=["label", "well_name"],
+        )
+
+        ome_zarr_container.add_table(
+            name="consolidated_features_all_channels",
+            table=FeatureTable(
+                all_channels_df, reference_label=cytoplasm_table.reference_label
+            ),
+            backend="csv",
+            overwrite=True,
+        )
 
     logger.info("Table consolidation complete.")
 

@@ -32,22 +32,22 @@
             "description": "Directory to store the OME-Zarr containers."
           },
           "overlap_label_prefix": {
-            "default": "Cells_RNA",
+            "default": "Cells",
             "title": "Overlap Label Prefix",
             "type": "string",
-            "description": "Prefix for the overlap labels. Defaults to \"Cells_RNA\"."
+            "description": "Prefix for the overlap labels. Defaults to \"Cells\"."
           },
           "nucleus_table_name": {
-            "default": "Nucleus_features_apx",
+            "default": "Nucleus_features",
             "title": "Nucleus Table Name",
             "type": "string",
-            "description": "Name of the nucleus table (parent). Defaults to \"Nucleus_features_apx\"."
+            "description": "Name of the nucleus table (parent). Defaults to \"Nucleus_features\"."
           },
           "cytoplasm_table_name": {
-            "default": "Cytoplasm_features_apx",
+            "default": "Cytoplasm_features",
             "title": "Cytoplasm Table Name",
             "type": "string",
-            "description": "Name of the cytoplasm table (parent). Defaults to \"Cytoplasm_features_apx\"."
+            "description": "Name of the cytoplasm table (parent). Defaults to \"Cytoplasm_features\"."
           },
           "child_object_table_names": {
             "items": {
