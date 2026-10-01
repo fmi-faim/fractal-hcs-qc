@@ -401,3 +401,42 @@ def test_consolidate_tables_task(
     assert "consolidated_table" not in c04.tables_container.list()
     assert "RNA_features_consolidated" not in c04.tables_container.list()
     assert "consolidated_features_all_channels" not in c04.tables_container.list()
+
+
+def test_consolidate_tables_without_nucleus_table(
+    plate_dataset: OmeZarrPlate, tmp_plate_zarr_path: Path
+):
+    """Omit the nucleus input and its reference column from the child table."""
+    well_path = (tmp_plate_zarr_path / plate_dataset.images_paths()[0]).as_posix()
+    container = open_ome_zarr_container(well_path)
+    child_table = container.get_feature_table("Speckle_features_apx")
+    child_df = child_table.load_as_polars_lf().collect().drop("Nucleus_cellpose_label")
+    container.add_table(
+        name="Speckle_features_apx",
+        table=FeatureTable(child_df, reference_label="RNA_Speckles"),
+        backend="csv",
+        overwrite=True,
+    )
+
+    consolidate_tables_task(
+        zarr_urls=[well_path],
+        zarr_dir="",
+        overlap_label_prefix="Cells_RNA",
+        cytoplasm_table_name="Cytoplasm_features_apx",
+        child_object_table_names=["Speckle_features_apx"],
+    )
+
+    container = open_ome_zarr_container(well_path)
+    tables = container.tables_container.list()
+    assert "consolidated_table" in tables
+    assert "RNA_features_consolidated" in tables
+    assert "consolidated_features_all_channels" in tables
+
+    consolidated = (
+        container.get_feature_table("consolidated_features_all_channels")
+        .load_as_polars_lf()
+        .collect()
+    )
+    assert {"label", "well_name"}.issubset(consolidated.columns)
+    assert not any("nucleus" in column.lower() for column in consolidated.columns)
+    assert any("cytoplasm" in column.lower() for column in consolidated.columns)

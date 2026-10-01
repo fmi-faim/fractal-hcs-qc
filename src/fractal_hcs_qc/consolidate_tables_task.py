@@ -60,7 +60,7 @@ def consolidate_tables_task(
     zarr_dir: str,
     # Input parameters
     overlap_label_prefix: str = "Cells",
-    nucleus_table_name: str = "Nucleus_features",
+    nucleus_table_name: str | None = None,
     cytoplasm_table_name: str = "Cytoplasm_features",
     child_object_table_names: list[str] | None = None,
     table_backend: TableBackend | None = None,
@@ -72,8 +72,8 @@ def consolidate_tables_task(
         zarr_dir (str): Directory to store the OME-Zarr containers.
         overlap_label_prefix (str): Prefix for the overlap labels.
             Defaults to "Cells".
-        nucleus_table_name (str): Name of the nucleus table (parent).
-            Defaults to "Nucleus_features".
+        nucleus_table_name (str | None): Name of the nucleus table (parent).
+            Defaults to None, which skips nucleus processing.
         cytoplasm_table_name (str): Name of the cytoplasm table (parent).
             Defaults to "Cytoplasm_features".
         child_object_table_names (list[str] | None): Names of the child object tables.
@@ -95,11 +95,14 @@ def consolidate_tables_task(
         # TODO fail fast if any provided table is not present in the OME-Zarr container
 
         # load tables and remove column prefixes (e.g. "Nucleus_", "Cytoplasm_")
-        nucleus_table = ome_zarr_container.get_feature_table(nucleus_table_name)
-        nucleus_table_df = remove_prefix_from_columns(
-            nucleus_table.load_as_polars_lf(),
-            prefix=nucleus_table.reference_label + "_",
-        )
+        nucleus_table = None
+        nucleus_table_df = None
+        if nucleus_table_name is not None:
+            nucleus_table = ome_zarr_container.get_feature_table(nucleus_table_name)
+            nucleus_table_df = remove_prefix_from_columns(
+                nucleus_table.load_as_polars_lf(),
+                prefix=nucleus_table.reference_label + "_",
+            )
         cytoplasm_table = ome_zarr_container.get_feature_table(cytoplasm_table_name)
         cytoplasm_table_df = remove_prefix_from_columns(
             cytoplasm_table.load_as_polars_lf(),
@@ -109,27 +112,36 @@ def consolidate_tables_task(
         # globals
         channel_labels = ome_zarr_container.get_image().channel_labels
         overlap_label = overlap_label_prefix + "_label"
-        nucleus_label_prefix = nucleus_table.reference_label + "_label"
+        nucleus_label_prefix = (
+            nucleus_table.reference_label + "_label"
+            if nucleus_table is not None
+            else None
+        )
         cytoplasm_label_prefix = cytoplasm_table.reference_label + "_label"
         # columns_to_merge_on: list[str] = [overlap_label, "well_name"]
 
         # Aggregate nucleus table to combine nuclei belonging to the same cell
         # (for polynucleated cells)
         # group by Cells_RNA_label (well, plate etc.) --> single-cell, non-poly nuclei
-        nucleus_table_df = aggregate_mean_sum_first(
-            nucleus_table_df,
-            group_columns=overlap_label,
-        )
+        if nucleus_table_df is not None:
+            nucleus_table_df = aggregate_mean_sum_first(
+                nucleus_table_df,
+                group_columns=overlap_label,
+            )
 
-        # rename overlap_label_prefix column to "label", remove previous "label" column
-        nucleus_table_df = nucleus_table_df.drop("label").rename(
-            {
-                overlap_label: "label",
-                "count": "nucleus_count",
-            }
-        )
+            # rename overlap_label_prefix column to "label",
+            # remove previous "label" column
+            nucleus_table_df = nucleus_table_df.drop("label").rename(
+                {
+                    overlap_label: "label",
+                    "count": "nucleus_count",
+                }
+            )
 
-        nucleus_empty = nucleus_table_df.lazy().limit(1).collect().is_empty()
+        nucleus_empty = (
+            nucleus_table_df is None
+            or nucleus_table_df.lazy().limit(1).collect().is_empty()
+        )
         cytoplasm_empty = cytoplasm_table_df.lazy().limit(1).collect().is_empty()
 
         if nucleus_empty and cytoplasm_empty:
@@ -142,7 +154,7 @@ def consolidate_tables_task(
         # id columns: label, well_name, ROI
         # all numeric features: feature_name, value
         parts = []
-        if not nucleus_empty:
+        if not nucleus_empty and nucleus_table_df is not None:
             parts.append(
                 nucleus_table_df.with_columns(
                     pl.lit("nucleus").alias("compartment")
@@ -190,15 +202,22 @@ def consolidate_tables_task(
                 logger.warning(f"Object table {object_table_name} is empty. Skipping.")
                 continue
 
-            # add compartment=nucleus where nucleus_label is not null
-            # add compartment=cytoplasm where cytoplasm_label is not null
+            if nucleus_label_prefix is None:
+                compartment = (
+                    pl.when(pl.col(cytoplasm_label_prefix).is_not_null())
+                    .then(pl.lit("cytoplasm"))
+                    .otherwise(pl.lit(None))
+                )
+            else:
+                compartment = (
+                    pl.when(pl.col(nucleus_label_prefix).is_not_null())
+                    .then(pl.lit("nucleus"))
+                    .when(pl.col(cytoplasm_label_prefix).is_not_null())
+                    .then(pl.lit("cytoplasm"))
+                    .otherwise(pl.lit(None))
+                )
             object_table_df = object_table_df.with_columns(
-                pl.when(pl.col(nucleus_label_prefix).is_not_null())
-                .then(pl.lit("nucleus"))
-                .when(pl.col(cytoplasm_label_prefix).is_not_null())
-                .then(pl.lit("cytoplasm"))
-                .otherwise(pl.lit(None))
-                .alias("compartment")
+                compartment.alias("compartment")
             )
 
             object_table_df = aggregate_mean_std_sum_first(

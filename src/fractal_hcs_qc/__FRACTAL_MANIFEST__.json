@@ -58,10 +58,17 @@
             "description": "Prefix for the overlap labels. Defaults to \"Cells\"."
           },
           "nucleus_table_name": {
-            "default": "Nucleus_features",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
             "title": "Nucleus Table Name",
-            "type": "string",
-            "description": "Name of the nucleus table (parent). Defaults to \"Nucleus_features\"."
+            "description": "Name of the nucleus table (parent). Defaults to None, which skips nucleus processing."
           },
           "cytoplasm_table_name": {
             "default": "Cytoplasm_features",
