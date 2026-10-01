@@ -16,6 +16,26 @@
         "mem": 4000
       },
       "args_schema_non_parallel": {
+        "$defs": {
+          "TableBackend": {
+            "description": "Pydantic model for table backend validation.",
+            "properties": {
+              "backend": {
+                "default": "csv",
+                "enum": [
+                  "anndata",
+                  "json",
+                  "csv",
+                  "parquet"
+                ],
+                "title": "Backend",
+                "type": "string"
+              }
+            },
+            "title": "TableBackend",
+            "type": "object"
+          }
+        },
         "additionalProperties": false,
         "properties": {
           "zarr_urls": {
@@ -50,12 +70,33 @@
             "description": "Name of the cytoplasm table (parent). Defaults to \"Cytoplasm_features\"."
           },
           "child_object_table_names": {
-            "items": {
-              "type": "string"
-            },
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
             "title": "Child Object Table Names",
-            "type": "array",
             "description": "Names of the child object tables. Defaults to None."
+          },
+          "table_backend": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TableBackend"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Table Backend",
+            "description": "Backend for table operations. Defaults to None."
           }
         },
         "required": [
@@ -68,6 +109,6 @@
     }
   ],
   "has_args_schemas": true,
-  "args_schema_version": "pydantic_v2",
+  "args_schema_version": "fractal_schema_v1",
   "authors": "Facility for Advanced Imaging and Microscopy (FAIM), FMI, Basel"
 }

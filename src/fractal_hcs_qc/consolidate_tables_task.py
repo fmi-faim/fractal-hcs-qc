@@ -1,13 +1,14 @@
 """This is the Python module for consolidate_tables_task."""
 
 from functools import reduce
+from typing import Literal
 
 import polars as pl
 import polars.selectors as cs
 from loguru import logger
 from ngio import open_ome_zarr_container
-from ngio.tables import FeatureTable, GenericTable
-from pydantic import validate_call
+from ngio.tables import DefaultTableBackend, FeatureTable, GenericTable
+from pydantic import BaseModel, validate_call
 
 from fractal_hcs_qc.utils_polars import (
     aggregate_mean_std_sum_first,
@@ -45,6 +46,12 @@ def remove_common_prefixes(
     return df.with_columns(expr.alias(column_name))
 
 
+class TableBackend(BaseModel):
+    """Pydantic model for table backend validation."""
+
+    backend: Literal["anndata", "json", "csv", "parquet"] = "csv"
+
+
 @validate_call
 def consolidate_tables_task(
     *,
@@ -56,6 +63,7 @@ def consolidate_tables_task(
     nucleus_table_name: str = "Nucleus_features",
     cytoplasm_table_name: str = "Cytoplasm_features",
     child_object_table_names: list[str] | None = None,
+    table_backend: TableBackend | None = None,
 ) -> None:
     """Consolidate tables within OME-Zarr containers (of an HCS plate).
 
@@ -70,8 +78,11 @@ def consolidate_tables_task(
             Defaults to "Cytoplasm_features".
         child_object_table_names (list[str] | None): Names of the child object tables.
             Defaults to None.
-
+        table_backend (Literal["csv", "anndata", "parquet", "json"] | None):
+            Backend for table operations. Defaults to None.
     """
+    backend = table_backend.backend if table_backend else DefaultTableBackend
+
     # Loop over all OME-Zarr containers
 
     for zarr_url in zarr_urls:
@@ -240,11 +251,21 @@ def consolidate_tables_task(
             channel_names=channel_labels,
         )
 
+        # fill None values in split columns to ensure uniform type
+        consolidated_df = consolidated_df.with_columns(
+            [
+                pl.col("feature").fill_null(""),
+                pl.col("channel").fill_null(""),
+                pl.col("stat").fill_null(""),
+                pl.col("compartment").fill_null(""),
+            ]
+        )
+
         # write consolidated table back to OME-Zarr container
         ome_zarr_container.add_table(
             name="consolidated_table",
             table=GenericTable(consolidated_df),
-            backend="csv",
+            backend=backend,
             overwrite=True,
         )
 
@@ -280,7 +301,7 @@ def consolidate_tables_task(
                 table=FeatureTable(
                     channel_df, reference_label=cytoplasm_table.reference_label
                 ),
-                backend="csv",
+                backend=backend,
                 overwrite=True,
             )
 
@@ -307,7 +328,7 @@ def consolidate_tables_task(
             table=FeatureTable(
                 all_channels_df, reference_label=cytoplasm_table.reference_label
             ),
-            backend="csv",
+            backend=backend,
             overwrite=True,
         )
 

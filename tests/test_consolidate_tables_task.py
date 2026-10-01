@@ -342,8 +342,9 @@ def test_plate_dataset_fixture(plate_dataset: OmeZarrPlate):
     assert set(np.unique(d_04_image.get_label("object").get_array())) == {0, 1}
 
 
+@pytest.mark.parametrize("table_backend", ["csv", "anndata", "json", "parquet"])
 def test_consolidate_tables_task(
-    plate_dataset: OmeZarrPlate, tmp_plate_zarr_path: Path
+    plate_dataset: OmeZarrPlate, tmp_plate_zarr_path: Path, table_backend: str
 ):
     # Generate list of strings for wells
     well_path_list = [
@@ -358,6 +359,7 @@ def test_consolidate_tables_task(
         nucleus_table_name="Nucleus_features_apx",
         cytoplasm_table_name="Cytoplasm_features_apx",
         child_object_table_names=["Speckle_features_apx"],
+        table_backend={"backend": table_backend},
     )
 
     # C/03/fov0: non-empty well — assert tables were written with content
