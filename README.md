@@ -50,7 +50,8 @@ If you want to modify or extend this package:
 The task expects OME-Zarr containers (typically from an HCS plate) containing measurement tables in the following structure:
 
 - **Parent tables** (usually one per compartment):
-  - Nucleus measurements (e.g., `Nucleus_features_apx`)
+  - Nucleus measurements (optional; e.g., `Nucleus_features_apx`). Omit
+    `nucleus_table_name` to skip nucleus processing.
   - Cytoplasm measurements (e.g., `Cytoplasm_features_apx`)
 - **Child object tables** (optional):
   - Measurements for objects detected within compartments (e.g., RNA spots, vesicles)
